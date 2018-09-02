@@ -122,4 +122,20 @@ void BenchmarkKernel(const CLApp &cli, const GraphT_ &g,
   PrintTime("Average Time", total_seconds / cli.num_trials());
 }
 
+
+// Calls (and times) kernel according to command line arguments without verifying results/printing stats
+template<typename ProcessFunc>
+void BenchmarkKernel(const CLApp &cli, ProcessFunc kernel) {
+  double total_seconds = 0;
+  Timer trial_timer;
+  for (int iter=0; iter < cli.num_trials(); iter++) {
+    trial_timer.Start();
+    kernel();
+    trial_timer.Stop();
+    PrintTime("Trial Time", trial_timer.Seconds());
+    total_seconds += trial_timer.Seconds();
+  }
+  PrintTime("Average Time", total_seconds / cli.num_trials());
+}
+
 #endif  // BENCHMARK_H_

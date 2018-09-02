@@ -17,10 +17,17 @@ ifneq ($(SERIAL), 1)
 endif
 
 KERNELS = bc bfs cc cc_afforest pr sssp tc
+KERNELS_CUDA = cc_cuda
 SUITE = $(KERNELS) converter
 
 .PHONY: all
 all: $(SUITE)
+
+.PHONY: cuda
+cuda: $(KERNELS_CUDA)
+
+%_cuda: device/%.cu src/*.h
+	nvcc -arch sm_60 -O3 -std=c++11 -Isrc -Ideps/cub -Xcompiler -fopenmp -Xcompiler -Wall $< -o $@
 
 % : src/%.cc src/*.h
 	$(CXX) $(CXX_FLAGS) $< -o $@

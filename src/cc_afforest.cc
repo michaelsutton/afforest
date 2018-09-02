@@ -49,7 +49,7 @@ Author: Michael Sutton
 Will return comp array labelling each vertex with a connected component ID
 
 This CC implementation makes use of the Afforest subgraph sampling algorithm [1],
-which restructures and extends the Shiloach-Vishkin [2] algorithm.
+which restructures and extends the Shiloach-Vishkin algorithm [2].
 
 [1] Michael Sutton, Tal Ben-Nun, and Amnon Barak. "Optimizing Parallel 
     Graph Connectivity Computation via Subgraph Sampling" Symposium on 

@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cc-sv", "cc-sv\cc-sv.vcxpro
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cc-afforest", "cc-afforest\cc-afforest.vcxproj", "{7C0AE2ED-1B25-4756-9EC9-88B5BC948D8A}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cc-cuda", "cc-cuda\cc-cuda.vcxproj", "{BB1689D2-EA06-4B41-AAD9-862EBCB1416D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -31,6 +33,14 @@ Global
 		{7C0AE2ED-1B25-4756-9EC9-88B5BC948D8A}.Release|Win32.Build.0 = Release|Win32
 		{7C0AE2ED-1B25-4756-9EC9-88B5BC948D8A}.Release|x64.ActiveCfg = Release|x64
 		{7C0AE2ED-1B25-4756-9EC9-88B5BC948D8A}.Release|x64.Build.0 = Release|x64
+		{BB1689D2-EA06-4B41-AAD9-862EBCB1416D}.Debug|Win32.ActiveCfg = Debug|Win32
+		{BB1689D2-EA06-4B41-AAD9-862EBCB1416D}.Debug|Win32.Build.0 = Debug|Win32
+		{BB1689D2-EA06-4B41-AAD9-862EBCB1416D}.Debug|x64.ActiveCfg = Debug|x64
+		{BB1689D2-EA06-4B41-AAD9-862EBCB1416D}.Debug|x64.Build.0 = Debug|x64
+		{BB1689D2-EA06-4B41-AAD9-862EBCB1416D}.Release|Win32.ActiveCfg = Release|Win32
+		{BB1689D2-EA06-4B41-AAD9-862EBCB1416D}.Release|Win32.Build.0 = Release|Win32
+		{BB1689D2-EA06-4B41-AAD9-862EBCB1416D}.Release|x64.ActiveCfg = Release|x64
+		{BB1689D2-EA06-4B41-AAD9-862EBCB1416D}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
