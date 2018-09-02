@@ -375,35 +375,6 @@ namespace kernels {
     }
   }
 
-  __global__ void LinkKernel(DevGraph g, NodeID* comp)
-  {
-    uint32_t tid = TID_1D;
-    uint32_t nthreads = TOTAL_THREADS_1D;
-
-    NodeID roundedup = round_up(g.nnodes_, blockDim.x) * blockDim.x; // We want all threads in active blocks to enter the loop
-
-    for (NodeID n = tid; n < roundedup; n += nthreads)
-    {
-      CTA::np_local<NodeID> np_local = { 0, 0, 0 };
-
-      if (n < g.nnodes_)
-      {
-        np_local.start = g.begin_edge(n);
-        np_local.size = g.end_edge(n) - np_local.start;
-        np_local.meta_data = n;
-      }
-
-      CTA::CTAWorkScheduler<NodeID>::template schedule(
-        np_local,
-        [&g, &comp](OffsetID edge, NodeID u)
-        {
-          NodeID v = g.edge_dest(edge);
-          Link(comp, u, v);
-        }
-      );
-    }
-  }
-
   __global__ void LinkNeighborKernel(DevGraph g, NodeID* comp, NodeID neighbor)
   {
     NodeID u = TID_1D;
@@ -423,7 +394,7 @@ namespace kernels {
     samples[tid] = comp[samples[tid]]; // Note: samples are updated in place
   }
 
-  __global__ void LinkSkipKernel(DevGraph g, NodeID* comp, NodeID start_neighbor, NodeID skip)
+  __global__ void LinkFinalKernel(DevGraph g, NodeID* comp, NodeID start_neighbor, NodeID skip)
   {
     uint32_t tid = TID_1D;
     uint32_t nthreads = TOTAL_THREADS_1D;
@@ -453,10 +424,8 @@ namespace kernels {
     }
   }
 
-  //
-  // Should be used only for directed graphs and during the skip link phase
-  //
-  __global__ void LinkSkipInverseKernel(DevGraphInverse g, NodeID* comp, NodeID start_neighbor, NodeID skip)
+  // Used only for directed graphs and during the final link phase
+  __global__ void LinkFinalInverseKernel(DevGraphInverse g, NodeID* comp, NodeID start_neighbor, NodeID skip)
   {
     uint32_t tid = TID_1D;
     uint32_t nthreads = TOTAL_THREADS_1D;
@@ -527,9 +496,9 @@ namespace kernels {
 
 using namespace kernels;
 
-// Afforest host-side runners
+// Afforest host-side methods
 namespace {
-  std::pair<NodeID, float> SampleLargestStar(NodeID* dev_comp, NodeID* dev_samples, NodeID nnodes)
+  NodeID SampleFrequentElement(NodeID* dev_comp, NodeID* dev_samples, NodeID nnodes)
   {
     pvector<NodeID> samples(SAMPLE_SIZE);
 
@@ -537,7 +506,7 @@ namespace {
     std::mt19937 gen;
     std::uniform_int_distribution<NodeID> distribution(0, nnodes - 1);
     for (NodeID i = 0; i < SAMPLE_SIZE; i++) {
-      samples[i] = distribution(gen);
+      samples[i] = distribution(gen); // Select random nodes to sample  
     }
 
     cudaStream_t copy_stream;
@@ -545,20 +514,24 @@ namespace {
     CUDA_CHECK(cudaStreamCreateWithFlags(&copy_stream, cudaStreamNonBlocking));
     CUDA_CHECK(cudaEventCreateWithFlags(&copy_event, cudaEventDisableTiming));
 
+    // Copy the selected random nodes to device memory (on a different stream)
     CUDA_CHECK(cudaMemcpyAsync(dev_samples, samples.data(), SAMPLE_SIZE * sizeof(NodeID), cudaMemcpyHostToDevice, copy_stream));
     cudaEventRecord(copy_event, copy_stream);
-    cudaStreamWaitEvent(nullptr, copy_event, 0);
+    cudaStreamWaitEvent(nullptr, copy_event, 0); // Make sure default stream syncs with copy
 
     dim3 grid_dims, block_dims;
     kernel_sizing(grid_dims, block_dims, BLOCK_THREADS, SAMPLE_SIZE);
-    SampleKernel << < grid_dims, block_dims >> > (dev_comp, dev_samples);
+    // Run sampling kernel on default stream
+    SampleKernel <<< grid_dims, block_dims >>> (dev_comp, dev_samples);
 
+    // Copy sampling results to host memory and sync
     CUDA_CHECK(cudaMemcpyAsync(samples.data(), dev_samples, SAMPLE_SIZE * sizeof(NodeID), cudaMemcpyDeviceToHost, nullptr));
     cudaStreamSynchronize(nullptr);
 
     std::unordered_map<NodeID, NodeID> sample_counts(SAMPLE_SIZE);
-    using pair_type = std::unordered_map<NodeID, NodeID>::value_type;
+    using kvp_type = std::unordered_map<NodeID, int>::value_type;
 
+    // Count component appearances for sampled nodes
     for (NodeID i = 0; i < SAMPLE_SIZE; i++)
     {
       auto it = sample_counts.find(samples[i]);
@@ -566,56 +539,55 @@ namespace {
       else                            ++it->second;
     }
 
-    auto sample_maxstar = std::max_element(
+    // Find an estimation for the most frequent element 
+    auto most_frequent = std::max_element(
       sample_counts.begin(), sample_counts.end(),
-      [](const pair_type& p1, const pair_type& p2) { return p1.second < p2.second; });
-
-    CUDA_CHECK(cudaStreamDestroy(copy_stream));
-    CUDA_CHECK(cudaEventDestroy(copy_event));
-
-    return std::make_pair(sample_maxstar->first, static_cast<float>(sample_maxstar->second) / SAMPLE_SIZE);
+      [](const kvp_type& p1, const kvp_type& p2) { return p1.second < p2.second; });
+    std::cout
+      << "Skipping largest intermediate component (ID: " << most_frequent->first
+      << ", approx. " << static_cast<int>((static_cast<float>(most_frequent->second) / SAMPLE_SIZE) * 100)
+      << "% of the graph)" << std::endl;
+    return most_frequent->first;
   }
 
-  void RunAfforestSkip(const Graph& host_g, DevGraph& dev_g, NodeID* dev_comp, NodeID* dev_samples, NodeID neighbor_rounds = 2)
+  void Afforest(const Graph& host_g, DevGraph& dev_g, NodeID* dev_comp, NodeID* dev_samples, NodeID neighbor_rounds = 2)
   {
     NodeID nnodes = dev_g.nnodes_;
     dim3 grid_dims, block_dims;
     kernel_sizing(grid_dims, block_dims, BLOCK_THREADS, nnodes);
 
-    InitKernel << < grid_dims, block_dims >> > (dev_comp, nnodes);
+    InitKernel <<< grid_dims, block_dims >>> (dev_comp, nnodes);
 
     for (NodeID neighbor = 0; neighbor < neighbor_rounds; neighbor++)
     {
-      LinkNeighborKernel << < grid_dims, block_dims >> > (dev_g, dev_comp, neighbor);
-      CompressKernel << < grid_dims, block_dims >> > (dev_comp, nnodes);
+      LinkNeighborKernel <<< grid_dims, block_dims >>> (dev_g, dev_comp, neighbor);
+      CompressKernel     <<< grid_dims, block_dims >>> (dev_comp, nnodes);
     }
 
-    auto largest_star = SampleLargestStar(dev_comp, dev_samples, nnodes);
-    NodeID skip = largest_star.first;
-    printf("Skipping largest sampled component %d (%1.2f %% of undirected graph)\n", skip, largest_star.second*100);
+    NodeID c = SampleFrequentElement(dev_comp, dev_samples, nnodes);
 
-    LinkSkipKernel << < grid_dims, block_dims >> > (dev_g, dev_comp, neighbor_rounds, skip);
-    CompressKernel << < grid_dims, block_dims >> > (dev_comp, nnodes);
+    LinkFinalKernel <<< grid_dims, block_dims >>> (dev_g, dev_comp, neighbor_rounds, c);
+    CompressKernel  <<< grid_dims, block_dims >>> (dev_comp, nnodes);
   }
 
-  void RunAfforestSkipInverse(const Graph& host_g, DevGraphInverse& dev_g, NodeID* dev_comp, NodeID* dev_samples, NodeID neighbor_rounds = 2)
+  void AfforestDirected(const Graph& host_g, DevGraphInverse& dev_g, NodeID* dev_comp, NodeID* dev_samples, NodeID neighbor_rounds = 2)
   {
     NodeID nnodes = dev_g.nnodes_;
     dim3 grid_dims, block_dims;
     kernel_sizing(grid_dims, block_dims, BLOCK_THREADS, nnodes);
 
-    InitKernel << < grid_dims, block_dims >> > (dev_comp, nnodes);
+    InitKernel <<< grid_dims, block_dims >>> (dev_comp, nnodes);
 
     for (NodeID neighbor = 0; neighbor < neighbor_rounds; neighbor++)
     {
-      LinkNeighborKernel << < grid_dims, block_dims >> > (dev_g.GetNoInverseGraph(), dev_comp, neighbor);
-      CompressKernel << < grid_dims, block_dims >> > (dev_comp, nnodes);
+      LinkNeighborKernel <<< grid_dims, block_dims >>> (dev_g.GetNoInverseGraph(), dev_comp, neighbor);
+      CompressKernel     <<< grid_dims, block_dims >>> (dev_comp, nnodes);
     }
 
-    NodeID skip = SampleLargestStar(dev_comp, dev_samples, nnodes).first;
+    NodeID c = SampleFrequentElement(dev_comp, dev_samples, nnodes);
 
-    LinkSkipInverseKernel << < grid_dims, block_dims >> > (dev_g, dev_comp, neighbor_rounds, skip);
-    CompressKernel << < grid_dims, block_dims >> > (dev_comp, nnodes);
+    LinkFinalInverseKernel <<< grid_dims, block_dims >>> (dev_g, dev_comp, neighbor_rounds, c);
+    CompressKernel         <<< grid_dims, block_dims >>> (dev_comp, nnodes);
   }
 }
 
@@ -638,12 +610,12 @@ void BenchmarkConnectedComponents(CLApp& cli, const Graph& g)
     // Allocating inverse graph for supporting skip on directed graphs
     DevGraphInverseAllocator dev_allocator(g);
     DevGraphInverse& dev_g = dev_allocator.dev_g_;
-    BenchmarkKernel(cli, [&]() { RunAfforestSkipInverse(g, dev_g, dev_comp, dev_samples); cudaDeviceSynchronize(); });
+    BenchmarkKernel(cli, [&]() { AfforestDirected(g, dev_g, dev_comp, dev_samples); cudaDeviceSynchronize(); });
   }
   else {
     DevGraphAllocator dev_allocator(g);
     DevGraph& dev_g = dev_allocator.dev_g_;
-    BenchmarkKernel(cli, [&](){ RunAfforestSkip(g, dev_g, dev_comp, dev_samples); cudaDeviceSynchronize(); });
+    BenchmarkKernel(cli, [&](){ Afforest(g, dev_g, dev_comp, dev_samples); cudaDeviceSynchronize(); });
   }
 
   CUDA_CHECK(cudaMemcpy(host_comp.data(), dev_comp, nnodes*sizeof(NodeID), cudaMemcpyDeviceToHost));
