@@ -192,9 +192,9 @@ namespace CTA {
                 int leader = __ffs(mask) - 1;   
 
                 // Broadcast data from the leader  
-                index_type start = cub::ShuffleIndex(np_local.start, leader, 32, 0xffffffff);
-                index_type size = cub::ShuffleIndex(np_local.size, leader, 32, 0xffffffff);
-                TMetaData meta_data = cub::ShuffleIndex(np_local.meta_data, leader, 32, 0xffffffff);
+                index_type start = cub::ShuffleIndex <CUB_PTX_WARP_THREADS>(np_local.start, leader, 0xffffffff);
+                index_type size = cub::ShuffleIndex <CUB_PTX_WARP_THREADS>(np_local.size, leader, 0xffffffff);
+                TMetaData meta_data = cub::ShuffleIndex <CUB_PTX_WARP_THREADS>(np_local.meta_data, leader, 0xffffffff);
 
                 if (leader == lane_id)
                 {
