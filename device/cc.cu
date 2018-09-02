@@ -364,7 +364,7 @@ namespace kernels {
 
       // atomicCAS(ptr, compare, val);
       // TODO: test precheck
-      int prev = atomicCAS(comp + high, high, low);
+      NodeID prev = atomicCAS(comp + high, high, low);
 
       if (prev == high || prev == low) {
         break;
@@ -528,7 +528,7 @@ namespace {
     CUDA_CHECK(cudaMemcpyAsync(samples.data(), dev_samples, SAMPLE_SIZE * sizeof(NodeID), cudaMemcpyDeviceToHost, nullptr));
     cudaStreamSynchronize(nullptr);
 
-    std::unordered_map<NodeID, NodeID> sample_counts(SAMPLE_SIZE);
+    std::unordered_map<NodeID, int> sample_counts(SAMPLE_SIZE);
     using kvp_type = std::unordered_map<NodeID, int>::value_type;
 
     // Count component appearances for sampled nodes
