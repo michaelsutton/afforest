@@ -2,6 +2,7 @@ bc
 bfs
 cc
 cc_afforest
+cc_cuda
 converter
 pr
 sssp
@@ -69,4 +70,5 @@ _ReSharper*/
 *.sdf
 *.opensdf
 *.deps
+
 
