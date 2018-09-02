@@ -32,7 +32,12 @@ Author: Scott Beamer
 */
 
 
-using namespace std;
+using std::cout;
+using std::endl;
+using std::unordered_map;
+using std::vector;
+using std::pair;
+using std::min;
 
 
 void PrintCompStats(const Graph &g, const pvector<NodeID> &comp) {
