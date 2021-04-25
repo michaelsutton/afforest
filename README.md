@@ -34,3 +34,6 @@ Publication
 Please cite this implementation by our publication:
 Michael Sutton, Tal Ben-Nun, Amnon Barak: "Optimizing Parallel Graph Connectivity Computation via Subgraph Sampling", Symposium on Parallel and Distributed Processing, IPDPS 2018.
 
+Thesis
+----------------
+My Master thesis (2018) extending the above publication can be found [here](https://drive.google.com/file/d/1rhodf82QOMmh25tvmBVWQla-kc2SONlI/view).  
